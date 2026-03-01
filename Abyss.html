@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css">
+    <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;900&display=swap');
+        :root { --bio: #00ffcc; --plasma: #00ffff; --boss: #ff0044; --heal: #00ff66; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000208; overflow: hidden; font-family: 'Orbitron'; color: white; }
+
+        /* Tactical Border */
+        #hud-frame {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            z-index: 200;
+            border: 20px solid transparent;
+            border-image: radial-gradient(circle, transparent 70%, rgba(0, 255, 204, 0.1) 100%) 1;
+            box-sizing: border-box;
+            transition: border-color 0.3s;
+        }
+
+        #hud-frame::before, #hud-frame::after {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            border: 2px solid var(--bio);
+        }
+        #hud-frame::before { top: 10px; left: 10px; border-right: 0; border-bottom: 0; }
+        #hud-frame::after { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
+
+        @keyframes danger-pulse {
+            0% { box-shadow: inset 0 0 20px rgba(255, 0, 68, 0.4); border-color: rgba(255, 0, 68, 0.5); }
+            50% { box-shadow: inset 0 0 60px rgba(255, 0, 68, 0.8); border-color: rgba(255, 0, 68, 1); }
+            100% { box-shadow: inset 0 0 20px rgba(255, 0, 68, 0.4); border-color: rgba(255, 0, 68, 0.5); }
+        }
+        .critical-hull { animation: danger-pulse 1s infinite !important; border: 2px solid var(--boss) !important; }
+
+        #hud { position: absolute; inset: 0; pointer-events: none; z-index: 100; padding: 40px; transition: opacity 1s; }
+        .glass { background: rgba(0, 20, 35, 0.85); border: 1px solid rgba(0, 255, 204, 0.4); backdrop-filter: blur(15px); padding: 15px; width: 260px; box-shadow: 0 0 30px rgba(0,0,0,0.5); }
+        .hp-cont { width: 100%; height: 12px; background: rgba(255,255,255,0.05); margin-top: 8px; border: 1px solid rgba(0,255,204,0.1); overflow: hidden; }
+        #hp-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #0044ff, var(--bio)); box-shadow: 0 0 15px var(--bio); transition: width 0.4s; }
+
+        #bar-top, #bar-bottom { position: absolute; left: 0; width: 100%; height: 0; background: black; z-index: 300; transition: height 1s ease-in-out; }
+        #bar-top { top: 0; } #bar-bottom { bottom: 0; }
+        .cinematic #bar-top, .cinematic #bar-bottom { height: 15%; }
+        .cinematic #hud, .cinematic #hud-frame { opacity: 0; }
+
+        #boss-announce { position: absolute; inset: 0; display: none; justify-content: center; align-items: center; z-index: 350; flex-direction: column; background: rgba(255,0,0,0.05); pointer-events: none; }
+        .victory-screen { position: absolute; inset: 0; display: none; background: white; color: black; z-index: 600; flex-direction: column; justify-content: center; align-items: center; animation: whiteOut 2s ease-in; }
+
+        .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle, #001a33, #000); z-index: 500; }
+        .btn { padding: 18px 50px; border: 2px solid var(--bio); background: transparent; color: var(--bio); cursor: pointer; font-family: 'Orbitron'; font-weight: 900; font-size: 20px; letter-spacing: 5px; transition: 0.4s; pointer-events: auto; }
+        .btn:hover { background: var(--bio); color: #000; box-shadow: 0 0 40px var(--bio); }
+
+        canvas { display: block; filter: contrast(1.1) brightness(1.1); }
+    </style>
+</head>
+<body id="main-body">
+    <div id="hud-frame"></div>
+    <div id="bar-top"></div><div id="bar-bottom"></div>
+
+    <div id="start-screen" class="overlay">
+        <h1 style="font-size: 60px; letter-spacing: 20px; text-shadow: 0 0 40px var(--bio); margin-bottom: 10px;">ABYSS</h1>
+        <p style="opacity: 0.5; margin-bottom: 30px;">NEURAL LINK ESTABLISHED</p>
+        <button class="btn" onclick="window.initGame()">INITIALIZE & DIVE</button>
+    </div>
+
+    <div id="boss-announce">
+        <h1 style="color: var(--boss); font-size: 50px; letter-spacing: 15px; text-shadow: 0 0 30px var(--boss);">APEX DETECTED</h1>
+    </div>
+
+    <div id="victory-screen" class="victory-screen">
+        <h1 style="font-size: 70px; letter-spacing: 15px;">ASCENDED</h1>
+        <button class="btn" style="border-color: black; color: black;" onclick="window.location.reload()">RE-LINK</button>
+    </div>
+
+    <div id="hud">
+        <div class="glass">
+            <div style="font-size: 10px; color: var(--bio); letter-spacing: 3px; font-weight: 900;">HULL_STABILITY</div>
+            <div class="hp-cont"><div id="hp-fill"></div></div>
+            <div id="depth-val" style="font-size: 30px; font-weight: 900; color: var(--bio); margin-top:10px;">01</div>
+            <button class="btn" style="font-size: 10px; padding: 5px 10px; margin-top: 10px;" onclick="window.toggleFS()">FULLSCREEN</button>
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        window.playSound = (type) => {
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            if (type === 'shoot') {
+                osc.type = 'triangle'; osc.frequency.setValueAtTime(400, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+            } else if (type === 'hit') {
+                osc.type = 'sawtooth'; osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gain.gain.setValueAtTime(0.05, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+            } else if (type === 'heal') {
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                osc.frequency.linearRampToValueAtTime(880, audioCtx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.2);
+            }
+        };
+        window.initGame = () => { window.runGame(); };
+        window.toggleFS = () => {
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else document.exitFullscreen();
+        };
+    </script>
+
+    <script type="py">
+from pyscript import window, document
+from pyodide.ffi import create_proxy
+import random, math
+
+canvas = document.getElementById("canvas")
+ctx = canvas.getContext("2d")
+lvl, game_active, game_t, is_cinematic = 1, False, 0, False
+player, entities, p_bullets, e_bullets, particles, pickups, bubbles = None, [], [], [], [], [], []
+keys = {}
+shake = 0
+
+def resize(e=None):
+    canvas.width = window.innerWidth
+    canvas.height = window.innerHeight
+window.addEventListener("resize", create_proxy(resize))
+resize()
+
+class Particle:
+    def __init__(self, x, y, color):
+        self.x, self.y, self.color = x, y, color
+        a = random.uniform(0, 6.28); s = random.uniform(1, 4)
+        self.vx, self.vy = math.cos(a)*s, math.sin(a)*s
+        self.life = 1.0
+    def draw(self):
+        self.x += self.vx; self.y += self.vy; self.life -= 0.02
+        ctx.globalAlpha = self.life; ctx.fillStyle = self.color
+        ctx.fillRect(self.x, self.y, 3, 3); ctx.globalAlpha = 1.0
+
+class HealDrop:
+    def __init__(self, x, y):
+        self.x, self.y, self.t = x, y, 0
+    def draw(self):
+        self.t += 0.1; self.y += math.sin(self.t)*0.5
+        ctx.shadowBlur = 15; ctx.shadowColor = "#00ff66"
+        ctx.fillStyle = "#00ff66"
+        ctx.fillRect(self.x-2, self.y-10, 4, 20); ctx.fillRect(self.x-10, self.y-2, 20, 4)
+        ctx.shadowBlur = 0
+
+class Player:
+    def __init__(self):
+        self.x, self.y, self.hp, self.dir = canvas.width/2, canvas.height/2, 100, 1
+        self.vx, self.vy = 0, 0
+    def update(self):
+        if is_cinematic: return
+        acc, fric = 0.95, 0.92
+        if keys.get("KeyA"): self.vx -= acc; self.dir = -1
+        if keys.get("KeyD"): self.vx += acc; self.dir = 1
+        if keys.get("KeyW"): self.vy -= acc
+        if keys.get("KeyS"): self.vy += acc
+        self.vx *= fric; self.vy *= fric; self.x += self.vx; self.y += self.vy
+        if game_t % 5 == 0: bubbles.append({'x': self.x - self.dir*20, 'y': self.y + 10, 'vy': random.uniform(1, 2), 'life': 1.0})
+
+    def draw(self):
+        ctx.save(); ctx.translate(self.x, self.y); ctx.scale(self.dir, 1)
+        ctx.shadowBlur = 20; ctx.shadowColor = "#00ffff"
+        ctx.fillStyle = "#051015"; ctx.fillRect(-15, -20, 30, 40)
+        ctx.fillStyle = "#00ffff"; ctx.fillRect(5, -12, 12, 14)
+        ctx.restore()
+
+class Enemy:
+    def __init__(self, is_boss=False):
+        self.is_boss = is_boss
+        self.w = 260 if is_boss else 65
+        self.x = canvas.width + 400 if is_boss else random.choice([-150, canvas.width+150])
+        self.y = canvas.height/2 if is_boss else random.randint(100, canvas.height-100)
+        self.hp = 100 if is_boss else 10; self.max_hp = self.hp
+        self.speed = 0.7 if is_boss else random.uniform(1.8, 3.2)
+        self.color = "#ff2244" if is_boss else "#00ffcc"
+        self.flash = 0
+
+    def update(self):
+        if is_cinematic and self.is_boss: self.x -= 2.5; return
+        dist = math.hypot(player.x - self.x, player.y - self.y)
+        self.x += (player.x - self.x)/max(1, dist) * self.speed
+        self.y += (player.y - self.y)/max(1, dist) * self.speed
+        if game_t % (30 if self.is_boss else 130) == 0:
+            ang = math.atan2(player.y - self.y, player.x - self.x)
+            e_bullets.append({'x':self.x, 'y':self.y, 'vx':math.cos(ang)*10, 'vy':math.sin(ang)*10})
+        if self.flash > 0: self.flash -= 1
+
+    def draw(self):
+        ctx.save(); ctx.translate(self.x, self.y)
+        if player.x < self.x: ctx.scale(-1, 1)
+        ctx.shadowBlur = 30; ctx.shadowColor = self.color
+        ctx.fillStyle = "white" if self.flash > 0 else self.color
+        ctx.beginPath(); ctx.ellipse(0, 0, self.w/2, self.w/4, 0, 0, 6.28); ctx.fill()
+        ctx.restore()
+
+def draw_airlock_gate(gx, gy, open_ratio):
+    """Draws a mechanical abyss airlock gate"""
+    ctx.save(); ctx.translate(gx, gy)
+
+    # Outer Rim
+    ctx.strokeStyle = "#223344"; ctx.lineWidth = 15; ctx.beginPath(); ctx.arc(0, 0, 80, 0, 6.28); ctx.stroke()
+    ctx.strokeStyle = var_bio; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 85, 0, 6.28); ctx.stroke()
+
+    # Mechanical Wheel (Spins)
+    ctx.save(); ctx.rotate(game_t * 0.05 * (1-open_ratio))
+    ctx.fillStyle = "#112233"; ctx.beginPath(); ctx.arc(0,0, 30, 0, 6.28); ctx.fill()
+    for i in range(6):
+        ctx.rotate(math.pi/3); ctx.fillStyle = "#334455"; ctx.fillRect(-5, -45, 10, 20)
+    ctx.restore()
+
+    # Sliding Door Segments
+    offset = open_ratio * 70
+    ctx.fillStyle = "#0a1520"; ctx.strokeStyle = "#445566"; ctx.lineWidth = 2
+    # Left Door
+    ctx.beginPath(); ctx.rect(-75 - offset, -75, 75, 150); ctx.fill(); ctx.stroke()
+    # Right Door
+    ctx.beginPath(); ctx.rect(offset, -75, 75, 150); ctx.fill(); ctx.stroke()
+
+    # Hazard Stripes on edges
+    if open_ratio < 0.9:
+        ctx.fillStyle = "#ffcc00"
+        for i in range(5):
+            ctx.fillRect(-5 - offset, -70 + i*30, 10, 10)
+            ctx.fillRect(-5 + offset, -70 + i*30, 10, 10)
+
+    ctx.restore()
+
+var_bio = "#00ffcc"
+
+def draw_vertex(gx, gy):
+    ctx.save(); ctx.translate(gx, gy)
+    for i in range(3):
+        ctx.rotate(game_t * 0.02 * (i+1))
+        ctx.strokeStyle = "rgba(255,255,255,0.3)"
+        ctx.lineWidth = 2
+        ctx.beginPath(); ctx.ellipse(0, 0, 100 + i*20, 40 + i*10, 0, 0, 6.28); ctx.stroke()
+    ctx.rotate(-game_t * 0.05)
+    ctx.fillStyle = "white"; ctx.shadowBlur = 100; ctx.shadowColor = "white"
+    ctx.beginPath(); ctx.arc(0, 0, 70 + math.sin(game_t*0.2)*10, 0, 6.28); ctx.fill()
+    ctx.shadowBlur = 0; ctx.fillStyle = "black"; ctx.beginPath(); ctx.arc(0, 0, 50, 0, 6.28); ctx.fill()
+    ctx.restore()
+
+def spawn():
+    global entities, is_cinematic, shake; entities = []
+    document.getElementById("depth-val").innerText = str(lvl).zfill(2)
+    if lvl == 5:
+        is_cinematic = True; shake = 60
+        document.getElementById("main-body").classList.add("cinematic")
+        document.getElementById("boss-announce").style.display = "flex"
+        entities.append(Enemy(True))
+        window.setTimeout(create_proxy(end_cinematic), 3500)
+    else:
+        for _ in range(lvl + 3): entities.append(Enemy())
+
+def end_cinematic():
+    global is_cinematic
+    is_cinematic = False
+    document.getElementById("main-body").classList.remove("cinematic")
+    document.getElementById("boss-announce").style.display = "none"
+
+def loop(time):
+    global game_t, game_active, lvl, shake
+    if not game_active: return
+    game_t += 1; ctx.clearRect(0,0,canvas.width, canvas.height)
+
+    ctx.save()
+    if shake > 0: ctx.translate(random.uniform(-shake/2, shake/2), random.uniform(-shake/2, shake/2)); shake *= 0.9
+
+    for b in bubbles[:]:
+        b['y'] -= b['vy']; b['life'] -= 0.01; ctx.globalAlpha = b['life']; ctx.strokeStyle = "white"
+        ctx.beginPath(); ctx.arc(b['x'], b['y'], 2, 0, 6.28); ctx.stroke()
+        if b['life'] <= 0: bubbles.remove(b)
+    ctx.globalAlpha = 1.0
+
+    player.update(); player.draw()
+
+    for p in pickups[:]:
+        p.draw()
+        if math.hypot(p.x - player.x, p.y - player.y) < 40:
+            player.hp = min(100, player.hp + 20); pickups.remove(p); window.playSound('heal')
+
+    for b in p_bullets[:]:
+        b['x'] += b['vx']; ctx.fillStyle = "white"; ctx.fillRect(b['x'], b['y'], 35, 4)
+        for e in entities[:]:
+            if math.hypot(b['x'] - e.x, b['y'] - e.y) < e.w/2:
+                e.hp -= 10; e.flash = 3; b['x'] = -9999; shake = 8; window.playSound('hit')
+                for _ in range(6): particles.append(Particle(e.x, e.y, e.color))
+                if e.hp <= 0:
+                    if random.random() < 0.25: pickups.append(HealDrop(e.x, e.y))
+                    entities.remove(e)
+        if not (0 < b['x'] < canvas.width): p_bullets.remove(b)
+
+    for eb in e_bullets[:]:
+        eb['x'] += eb['vx']; eb['y'] += eb['vy']; ctx.fillStyle = "#ff2200"
+        ctx.beginPath(); ctx.arc(eb['x'], eb['y'], 8, 0, 6.28); ctx.fill()
+        if math.hypot(eb['x'] - player.x, eb['y'] - player.y) < 25:
+            player.hp -= 15; e_bullets.remove(eb); shake = 15
+        elif not (0 < eb['x'] < canvas.width and 0 < eb['y'] < canvas.height): e_bullets.remove(eb)
+
+    for e in entities: e.update(); e.draw()
+    for p in particles[:]: p.draw()
+    if len(particles) > 100: particles.pop(0)
+
+    if not entities and not is_cinematic:
+        gx, gy = canvas.width/2, canvas.height/2
+        if lvl == 5:
+            draw_vertex(gx, gy)
+            dx, dy = gx - player.x, gy - player.y; dist = math.hypot(dx, dy)
+            player.x += dx/dist * 2.5; player.y += dy/dist * 2.5
+            if dist < 85:
+                document.getElementById("victory-screen").style.display = "flex"
+                game_active = False
+        else:
+            # Gate opening logic
+            dist_to_gate = math.hypot(player.x - gx, player.y - gy)
+            open_ratio = max(0, min(1, (150 - dist_to_gate) / 100)) if dist_to_gate < 150 else 0
+            draw_airlock_gate(gx, gy, open_ratio)
+
+            if dist_to_gate < 50:
+                lvl += 1; spawn()
+
+    ctx.restore()
+
+    hp_fill = document.getElementById("hp-fill")
+    hud_frame = document.getElementById("hud-frame")
+    hp_fill.style.width = f"{max(0, player.hp)}%"
+
+    if player.hp <= 30: hud_frame.classList.add("critical-hull")
+    else: hud_frame.classList.remove("critical-hull")
+
+    if player.hp <= 0: window.location.reload()
+    window.requestAnimationFrame(proxy_loop)
+
+def on_keydown(e):
+    keys[e.code] = True
+    if e.code == "Space" and not is_cinematic and game_active:
+        p_bullets.append({'x':player.x + (player.dir*30), 'y':player.y, 'vx':player.dir*30})
+        window.playSound('shoot')
+
+def on_keyup(e): keys[e.code] = False
+
+def start():
+    global player, game_active; player = Player(); spawn(); game_active = True
+    document.getElementById("start-screen").style.display = "none"
+    window.requestAnimationFrame(proxy_loop)
+
+
+
+def draw_background_ship(lvl):
+    """
+    Renders the sinking ship background.
+    The 'surface' is never seen; we start at the superstructure.
+    """
+    ctx.save()
+    # Parallax effect: Ship sinks slightly slower than bubbles to create depth
+    ship_drift = math.sin(game_t * 0.01) * 10
+
+    # Darkness increases with level
+    darkness = min(0.8, 0.2 + (lvl * 0.1))
+    ctx.fillStyle = f"rgba(0, 5, 15, {darkness})"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    # Ship Silhouette
+    ctx.translate(canvas.width / 2 + ship_drift, 0)
+
+    # Hull plates (Static background elements)
+    ctx.fillStyle = "#0a0f15"
+    hull_width = 500 + (lvl * 50) # Ship feels wider/tighter as you go deeper
+    ctx.fillRect(-hull_width/2, -100, hull_width, canvas.height + 200)
+
+    # Level-Specific Wreckage
+    ctx.strokeStyle = "rgba(0, 255, 204, 0.05)"
+    ctx.lineWidth = 2
+
+    if lvl == 1:
+        # SUPERSTRUCTURE: Rusted railings and broken masts
+        draw_wreckage_detail("railings", -200, 100)
+        draw_wreckage_detail("mast", 150, -50)
+    elif lvl == 2:
+        # MID-DECK: Lifeboat davits (empty) and portholes
+        draw_wreckage_detail("portholes", -150, 200)
+    elif lvl == 3:
+        # CARGO BAY: Massive torn steel plates and hanging cables
+        draw_wreckage_detail("cables", 0, 0)
+        draw_wreckage_detail("tear", -100, 300)
+    elif lvl == 4:
+        # ENGINE ROOM: Giant pistons and steam pipes
+        draw_wreckage_detail("pipes", -200, 50)
+    elif lvl == 5:
+        # THE ABYSS: The hull is crushed; only skeletal ribs remain
+        draw_wreckage_detail("ribs", 0, 0)
+
+    ctx.restore()
+
+def draw_wreckage_detail(type, x, y):
+    ctx.save()
+    ctx.translate(x, y)
+    ctx.beginPath()
+    if type == "railings":
+        for i in range(10):
+            ctx.moveTo(0, i*50); ctx.lineTo(100, i*50)
+            ctx.moveTo(i*20, 0); ctx.lineTo(i*20, 500)
+    elif type == "portholes":
+        for i in range(5):
+            ctx.arc(0, i*150, 30, 0, 6.28)
+    elif type == "pipes":
+        ctx.lineWidth = 40
+        ctx.moveTo(0, -100); ctx.lineTo(0, canvas.height)
+        ctx.moveTo(-100, 200); ctx.lineTo(300, 250)
+    elif type == "ribs":
+        for i in range(6):
+            ctx.moveTo(-300, i*200); ctx.quadraticCurveTo(0, i*200 + 100, 300, i*200)
+    ctx.stroke()
+    ctx.restore()
+
+proxy_loop = create_proxy(loop)
+window.runGame = create_proxy(start)
+window.addEventListener("keydown", create_proxy(on_keydown))
+window.addEventListener("keyup", create_proxy(on_keyup))
+    </script>
+</body>
+</html>
